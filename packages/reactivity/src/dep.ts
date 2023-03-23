@@ -44,11 +44,13 @@ export const finalizeDepMarkers = (effect: ReactiveEffect) => {
     for (let i = 0; i < deps.length; i++) {
       const dep = deps[i]
       if (wasTracked(dep) && !newTracked(dep)) {
+        // 是旧的非新的就删除effect
         dep.delete(effect)
       } else {
         deps[ptr++] = dep
       }
       // clear bits
+      // trackOpBit只有一位会是1，可以取非用与运算，将w上对应的1置为0，从而实现清除
       dep.w &= ~trackOpBit
       dep.n &= ~trackOpBit
     }

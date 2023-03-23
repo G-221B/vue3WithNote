@@ -194,8 +194,10 @@ const getId = (job: SchedulerJob): number =>
   job.id == null ? Infinity : job.id
 
 const comparator = (a: SchedulerJob, b: SchedulerJob): number => {
+  // 比较job，id小的优先执行。因为需要执行父组件的job再执行后代组件的job
   const diff = getId(a) - getId(b)
   if (diff === 0) {
+    // 相同id，带有pre属性为true的优先执行
     if (a.pre && !b.pre) return -1
     if (b.pre && !a.pre) return 1
   }

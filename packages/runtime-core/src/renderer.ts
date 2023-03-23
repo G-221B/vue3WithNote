@@ -1869,6 +1869,7 @@ function baseCreateRenderer(
       const s1 = i // prev starting index
       const s2 = i // next starting index
 
+      // hickey: 建立新节点的map。key: index
       // 5.1 build key:index map for newChildren
       const keyToNewIndexMap: Map<string | number | symbol, number> = new Map()
       for (i = s2; i <= e2; i++) {
@@ -1890,8 +1891,8 @@ function baseCreateRenderer(
       // 5.2 loop through old children left to be patched and try to patch
       // matching nodes & remove nodes that are no longer present
       let j
-      let patched = 0
-      const toBePatched = e2 - s2 + 1
+      let patched = 0 // 下面的操作的patch计数
+      const toBePatched = e2 - s2 + 1 // 新的子节点还没遍历的数量
       let moved = false
       // used to track whether any node has moved
       let maxNewIndexSoFar = 0
@@ -1900,11 +1901,14 @@ function baseCreateRenderer(
       // and oldIndex = 0 is a special value indicating the new node has
       // no corresponding old node.
       // used for determining longest stable subsequence
-      const newIndexToOldIndexMap = new Array(toBePatched)
+      const newIndexToOldIndexMap = new Array(toBePatched) // (新节点下标: 旧节点下标)，当新节点没有对应旧节点，则代表该节点为新增
       for (i = 0; i < toBePatched; i++) newIndexToOldIndexMap[i] = 0
 
       for (i = s1; i <= e1; i++) {
+        // hickey: 遍历还没有遍历的旧节点
         const prevChild = c1[i]
+        // 进入该场景多半是patched等于toBePatched,没有会出现大于的场景。
+        // 说明新节点已经处理完了，旧节点多出来的就是需要卸载的了
         if (patched >= toBePatched) {
           // all new children have been patched so this can only be a removal
           unmount(prevChild, parentComponent, parentSuspense, true)
@@ -1912,7 +1916,7 @@ function baseCreateRenderer(
         }
         let newIndex
         if (prevChild.key != null) {
-          newIndex = keyToNewIndexMap.get(prevChild.key)
+          newIndex = keyToNewIndexMap.get(prevChild.key) // 取出新节点的下标
         } else {
           // key-less node, try to locate a key-less node of the same type
           for (j = s2; j <= e2; j++) {
@@ -1926,12 +1930,17 @@ function baseCreateRenderer(
           }
         }
         if (newIndex === undefined) {
+          // 当新列表没有旧列表的key，说明该旧节点在新列表上没有存在，需要进行卸载
           unmount(prevChild, parentComponent, parentSuspense, true)
         } else {
+          // 关于下标使用【newIndex - s2】，因为newIndex是从s2开始的，所以需要减去。从而让该数组的下标可以回归0
+          // 关于value使用【i + 1】，是因为防止i等于0的情况，影响标识，所以+1
           newIndexToOldIndexMap[newIndex - s2] = i + 1
+          // 旧列表是按照顺序遍历节点的，如果新节点是按照旧节点的顺序排序，那么newIndex会呈现自动递增
           if (newIndex >= maxNewIndexSoFar) {
             maxNewIndexSoFar = newIndex
           } else {
+            // 当newIndex并非自动递增时，则代表旧节点去到新列表时的顺序乱掉了，需要移动进行排序
             moved = true
           }
           patch(
@@ -1956,12 +1965,15 @@ function baseCreateRenderer(
         : EMPTY_ARR
       j = increasingNewIndexSequence.length - 1
       // looping backwards so that we can use last patched node as anchor
+      // 逆序遍历新列表的新节点
+      // 使用逆序遍历：为了insertBefore
       for (i = toBePatched - 1; i >= 0; i--) {
         const nextIndex = s2 + i
         const nextChild = c2[nextIndex] as VNode
         const anchor =
           nextIndex + 1 < l2 ? (c2[nextIndex + 1] as VNode).el : parentAnchor
         if (newIndexToOldIndexMap[i] === 0) {
+          // 当新节点map不到旧节点，则代表是新增，需要挂载节点
           // mount new
           patch(
             null,
@@ -1978,7 +1990,10 @@ function baseCreateRenderer(
           // move if:
           // There is no stable subsequence (e.g. a reverse)
           // OR current node is not among the stable sequence
+          // 这里加入if条件判断，主要是为了优化性能，其实没有节点都移动一下，是没有问题的。
+          // 使用最长子序列去优化的昨晚：固定主主干，在最长子序列上的节点不需要挪动自己的，因为他们的顺序是正确的。
           if (j < 0 || i !== increasingNewIndexSequence[j]) {
+            // 当旧下标和新下标对应不上 或者 按递增的increasingNewIndexSequence遍历完
             move(nextChild, container, anchor, MoveType.REORDER)
           } else {
             j--

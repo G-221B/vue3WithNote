@@ -372,6 +372,7 @@ function doWatch(
   }
 
   // initial run
+  // 如果存在cb，则代表是watch
   if (cb) {
     if (immediate) {
       job()
@@ -379,11 +380,13 @@ function doWatch(
       oldValue = effect.run()
     }
   } else if (flush === 'post') {
+    // watchEffect场景
     queuePostRenderEffect(
       effect.run.bind(effect),
       instance && instance.suspense
     )
   } else {
+    // watchEffect场景
     effect.run()
   }
 
