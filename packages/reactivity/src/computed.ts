@@ -32,6 +32,7 @@ export class ComputedRefImpl<T> {
   public readonly __v_isRef = true
   public readonly [ReactiveFlags.IS_READONLY]: boolean = false
 
+  // 这个字段相当于一把锁。当computed内部依赖的响应式数据发生变化，此锁才打开
   public _dirty = true
   public _cacheable: boolean
 
@@ -41,10 +42,11 @@ export class ComputedRefImpl<T> {
     isReadonly: boolean,
     isSSR: boolean
   ) {
+    // 生成effect
     this.effect = new ReactiveEffect(getter, () => {
       if (!this._dirty) {
-        this._dirty = true
-        triggerRefValue(this)
+        this._dirty = true // 标识数据发生改变，用户下一次get的时候，effect需要执行run，重新计算value
+        triggerRefValue(this) // 通知依赖此computed的effect eg: effect使用到computed，那边computed发生改变，此effect就需要重新执行fn
       }
     })
     this.effect.computed = this
@@ -54,8 +56,9 @@ export class ComputedRefImpl<T> {
 
   get value() {
     // the computed ref may get wrapped by other proxies e.g. readonly() #3376
-    const self = toRaw(this)
-    trackRefValue(self)
+    // 防止用户使用readonly(computed)之后，无法是修改computed属性。
+    const self = toRaw(this) // 还原回原来对象
+    trackRefValue(self) // 使用到computed的effect收集此computed依赖
     if (self._dirty || !self._cacheable) {
       self._dirty = false
       self._value = self.effect.run()!
@@ -64,7 +67,7 @@ export class ComputedRefImpl<T> {
   }
 
   set value(newValue: T) {
-    this._setter(newValue)
+    this._setter(newValue) // 用户调用set方法，并不会修改computed的值
   }
 }
 
@@ -84,6 +87,8 @@ export function computed<T>(
   let getter: ComputedGetter<T>
   let setter: ComputedSetter<T>
 
+  // 这里主要是处理用户的调用格式，单独传一个fn或者一个对象。
+  // 根据用户的配置，去生成getter、setter两个函数。
   const onlyGetter = isFunction(getterOrOptions)
   if (onlyGetter) {
     getter = getterOrOptions
@@ -97,12 +102,12 @@ export function computed<T>(
     setter = getterOrOptions.set
   }
 
-  const cRef = new ComputedRefImpl(getter, setter, onlyGetter || !setter, isSSR)
+  const cRef = new ComputedRefImpl(getter, setter, onlyGetter || !setter, isSSR) // 重点
 
   if (__DEV__ && debugOptions && !isSSR) {
     cRef.effect.onTrack = debugOptions.onTrack
     cRef.effect.onTrigger = debugOptions.onTrigger
   }
 
-  return cRef as any
+  return cRef as any // 返回ref类型
 }
